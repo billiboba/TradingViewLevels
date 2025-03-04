@@ -1,0 +1,119 @@
+﻿//@version=5
+indicator("Automatic Support & Resistance with Webhook", shorttitle="Auto S/R", overlay=true)
+
+// Параметры уровней
+left = input(50, title="Left Bars")
+right = input(25, title="Right Bars")
+quick_right = input(5, title="Quick Right")
+src = input.string("Close", options=["Close", "High/Low"], title="Source")
+
+// Определение уровней
+pivot_high = src == "Close" ? ta.pivothigh(close, left, right) : ta.pivothigh(high, left, right)
+pivot_lows = src == "Close" ? ta.pivotlow(close, left, right) : ta.pivotlow(low, left, right)
+
+quick_pivot_high = src == "Close" ? ta.pivothigh(close, left, quick_right) : ta.pivothigh(high, left, quick_right)
+quick_pivot_lows = src == "Close" ? ta.pivotlow(close, left, quick_right) : ta.pivotlow(low, left, quick_right)
+
+// Определение уровней
+level1 = nz(ta.valuewhen(quick_pivot_high, high[quick_right], 0))
+level2 = nz(ta.valuewhen(quick_pivot_lows, low[quick_right], 0))
+level3 = nz(ta.valuewhen(pivot_high, high[right], 0))
+level4 = nz(ta.valuewhen(pivot_lows, low[right], 0))
+level5 = nz(ta.valuewhen(pivot_high, high[right], 1))
+level6 = nz(ta.valuewhen(pivot_lows, low[right], 1))
+level7 = nz(ta.valuewhen(pivot_high, high[right], 2))
+level8 = nz(ta.valuewhen(pivot_lows, low[right], 2))
+
+// Формируем JSON-сообщение
+jsonMessage = '{"symbol": "' + syminfo.ticker + '", "resistance": [' + 
+              str.tostring(level1) + ', ' + str.tostring(level3) + ', ' + str.tostring(level5) + ', ' + str.tostring(level7) + 
+              '], "support": [' + 
+              str.tostring(level2) + ', ' + str.tostring(level4) + ', ' + str.tostring(level6) + ', ' + str.tostring(level8) + ']}'
+
+// ✅ Отправка алерта раз в 30 секунд
+var float lastAlertTime = na
+currentTime = timenow  // Текущее время в миллисекундах
+timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  // Разница в секундах
+
+// Если прошло 30 секунд или новая свеча закрылась – отправляем алерт
+if timeDiff >= 30 or bar_index % 2 == 0  // `bar_index % 2 == 0` для вызова каждые 2 свечи на 15s таймфрейме
+    alert(jsonMessage, alert.freq_once_per_bar_close)
+    lastAlertTime := currentTime  // Обновляем время последнего алерта
+
+// 🔹 Рисуем уровни
+plot(level1, color=color.blue, linewidth=1)
+plot(level2, color=color.red, linewidth=1)
+plot(level3, color=color.green, linewidth=1)
+plot(level4, color=color.orange, linewidth=1)
+plot(level5, color=color.blue, linewidth=1)
+plot(level6, color=color.red, linewidth=1)
+plot(level7, color=color.green, linewidth=1)
+plot(level8, color=color.orange, linewidth=1)
+
+Уведомления приходят при закрытии Бара.
+
+
+
+////////////////////////////////////
+
+
+
+
+
+
+//@version=5
+indicator("Automatic Support & Resistance with Webhook", shorttitle="Auto S/R", overlay=true)
+
+// Параметры уровней
+left = input(50, title="Left Bars")
+right = input(25, title="Right Bars")
+quick_right = input(5, title="Quick Right")
+src = input.string("Close", options=["Close", "High/Low"], title="Source")
+
+// Определение уровней
+pivot_high = src == "Close" ? ta.pivothigh(close, left, right) : ta.pivothigh(high, left, right)
+pivot_lows = src == "Close" ? ta.pivotlow(close, left, right) : ta.pivotlow(low, left, right)
+
+quick_pivot_high = src == "Close" ? ta.pivothigh(close, left, quick_right) : ta.pivothigh(high, left, quick_right)
+quick_pivot_lows = src == "Close" ? ta.pivotlow(close, left, quick_right) : ta.pivotlow(low, left, quick_right)
+
+// Определение уровней
+level1 = nz(ta.valuewhen(quick_pivot_high, high[quick_right], 0))
+level2 = nz(ta.valuewhen(quick_pivot_lows, low[quick_right], 0))
+level3 = nz(ta.valuewhen(pivot_high, high[right], 0))
+level4 = nz(ta.valuewhen(pivot_lows, low[right], 0))
+level5 = nz(ta.valuewhen(pivot_high, high[right], 1))
+level6 = nz(ta.valuewhen(pivot_lows, low[right], 1))
+level7 = nz(ta.valuewhen(pivot_high, high[right], 2))
+level8 = nz(ta.valuewhen(pivot_lows, low[right], 2))
+
+// Формируем JSON-сообщение
+timestamp = str.tostring(timenow)
+
+jsonMessage = '{"symbol": "' + syminfo.ticker + '", "timestamp": "' + timestamp + '", "resistance": [' + 
+              str.tostring(level1) + ', ' + str.tostring(level3) + ', ' + str.tostring(level5) + ', ' + str.tostring(level7) + 
+              '], "support": [' + 
+              str.tostring(level2) + ', ' + str.tostring(level4) + ', ' + str.tostring(level6) + ', ' + str.tostring(level8) + ']}'
+
+// ✅ Глобальная переменная для хранения времени последнего алерта
+var float lastAlertTime = na
+currentTime = timenow  // Текущее время в миллисекундах
+timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  // Разница в секундах
+
+// ✅ Принудительная отправка алертов каждые 30 секунд
+if timeDiff >= 30  // Если прошло 30 секунд с последнего алерта
+    alert(jsonMessage, alert.freq_all)  // alert.freq_all позволяет отправлять алерты на каждом тике
+    lastAlertTime := currentTime  // Обновляем время последнего алерта
+
+// 🔹 Рисуем уровни
+plot(level1, color=color.blue, linewidth=1)
+plot(level2, color=color.red, linewidth=1)
+plot(level3, color=color.green, linewidth=1)
+plot(level4, color=color.orange, linewidth=1)
+plot(level5, color=color.blue, linewidth=1)
+plot(level6, color=color.red, linewidth=1)
+plot(level7, color=color.green, linewidth=1)
+plot(level8, color=color.orange, linewidth=1)
+
+
+Уведомления начинают приходить каждую секунду.
