@@ -1,101 +1,433 @@
-﻿//@version=4
-study(title = "Levels with Webhook Alerts", overlay = true) 
+﻿//@version=4 
 
-// Inputs
-ShowTF1SR = input(false, "Support / Resistance Zones")
-TF1 = input(title="----- Support / Resistance Zones", type=input.resolution, defval="")
-InvertColors = input(true, title = "Support / Resistance Zones - Invert Colors")
-
-smo = input(true, title = "Monthly Open") 
-spmc = input(true, title = "Prev Monthly Open") 
-spmh = input(true, title = "Prev Monthly High") 
-spml = input(true, title = "Prev Monthly Low") 
-swo = input(true, title = "Weekly Open") 
-spwc = input(true, title = "Prev Weekly Open") 
-spwh = input(true, title = "Prev Weekly High") 
-spwl = input(true, title = "Prev Weekly Low") 
-sdo = input(true, title = "Daily Open") 
-spdc = input(true, title = "Prev Daily Open") 
-spdh = input(true, title = "Prev Daily High") 
-spdl = input(true, title = "Prev Daily Low") 
-smpp = input(true, title = "Monthly 50%") 
-swpp = input(true, title = "Weekly 50%") 
-sdpp = input(true, title = "Daily 50%") 
-
-// Получаем уровни
-mo = security(syminfo.tickerid, 'M', open, lookahead=barmerge.lookahead_on) 
-pmo = security(syminfo.tickerid, 'M', open, lookahead=barmerge.lookahead_off)[1] 
-pmh = security(syminfo.tickerid, 'M', high, lookahead=barmerge.lookahead_off)[1] 
-pml = security(syminfo.tickerid, 'M', low, lookahead=barmerge.lookahead_off)[1] 
-wo = security(syminfo.tickerid, 'W', open, lookahead=barmerge.lookahead_on) 
-pwo = security(syminfo.tickerid, 'W', open, lookahead=barmerge.lookahead_off)[1] 
-pwh = security(syminfo.tickerid, 'W', high, lookahead=barmerge.lookahead_off)[1] 
-pwl = security(syminfo.tickerid, 'W', low, lookahead=barmerge.lookahead_off)[1] 
-do = security(syminfo.tickerid, 'D', open, lookahead=barmerge.lookahead_on) 
-pdo = security(syminfo.tickerid, 'D', open, lookahead=barmerge.lookahead_off)[1] 
-pdh = security(syminfo.tickerid, 'D', high, lookahead=barmerge.lookahead_off)[1] 
-pdl = security(syminfo.tickerid, 'D', low, lookahead=barmerge.lookahead_off)[1] 
-
-// Вычисляем уровни 50%
-dpp = (pdh + pdl) / 2 
-wpp = (pwh + pwl) / 2 
-mpp = (pmh + pml) / 2 
-
-// Собираем все уровни в массив
-levels = array.new_float()
-addLevel(lv) =>
-    if not na(lv) and not array.includes(levels, lv)  // Убираем дубликаты
-        array.push(levels, lv)
-
-addLevel(mo)
-addLevel(pmo)
-addLevel(pmh)
-addLevel(pml)
-addLevel(wo)
-addLevel(pwo)
-addLevel(pwh)
-addLevel(pwl)
-addLevel(do)
-addLevel(pdo)
-addLevel(pdh)
-addLevel(pdl)
-addLevel(dpp)
-addLevel(wpp)
-addLevel(mpp)
-
-// Формируем JSON с уровнями
-jsonMessage = '{"symbol": "' + syminfo.ticker + '", "levels": ['
-
-for i = 0 to array.size(levels) - 1
-    jsonMessage := jsonMessage + tostring(array.get(levels, i)) // Используем tostring() вместо str.tostring()
-    if i < array.size(levels) - 1
-        jsonMessage := jsonMessage + ", "
-
-jsonMessage := jsonMessage + "]}"
+// Adds Support / Resistance and Daily Weekly and Monthly Levels to your Chart
 
 
-// ✅ Отправка алерта раз в 30 секунд или при закрытии свечи
-var float lastAlertTime = na
-currentTime = timenow  
-timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  
 
-if timeDiff >= 30 or bar_index % 2 == 0  
-    alert(jsonMessage, alert.freq_once_per_bar_close)
-    lastAlertTime := currentTime  
+study(title = "WEBJOOK C#", overlay = true) 
+ 
+// Inputs 
 
-// 🔹 Графическое отображение уровней
-plot(mo, color=color.blue, linewidth=2, title="Monthly Open")
-plot(pmo, color=color.blue, linewidth=2, title="Prev Monthly Open")
-plot(pmh, color=color.green, linewidth=2, title="Prev Monthly High")
-plot(pml, color=color.red, linewidth=2, title="Prev Monthly Low")
-plot(wo, color=color.orange, linewidth=2, title="Weekly Open")
-plot(pwo, color=color.orange, linewidth=2, title="Prev Weekly Open")
-plot(pwh, color=color.green, linewidth=2, title="Prev Weekly High")
-plot(pwl, color=color.red, linewidth=2, title="Prev Weekly Low")
-plot(do, color=color.purple, linewidth=2, title="Daily Open")
-plot(pdo, color=color.purple, linewidth=2, title="Prev Daily Open")
-plot(pdh, color=color.green, linewidth=2, title="Prev Daily High")
-plot(pdl, color=color.red, linewidth=2, title="Prev Daily Low")
-plot(dpp, color=color.gray, linewidth=2, title="Daily 50%")
-plot(wpp, color=color.gray, linewidth=2, title="Weekly 50%")
-plot(mpp, color=color.gray, linewidth=2, title="Monthly 50%")
+ShowTF1SR       = input(false, "Support / Resistance Zones")
+TF1             = input(title="----- Support / Resistance Zones",                       type=input.resolution, defval="")
+
+// 
+InvertColors      = input(true, title = "Support / Resistance Zones - Invert Colors")
+
+
+MajLabelsIn     = input(      title = "Labels and Price Values",                        defval = 'OFF',  options=['OFF', 'Labels+$$', 'Labels Only'])
+
+LabelOffsetIn   = input(8,    title = "Label Offset")
+
+
+smo             = input(true,  title = "Monthly Open") 
+smoColorIn      = input(color.new(color.blue, 50), title = "Monthly Open Color",        type = input.color)
+
+spmc            = input(true,  title = "Prev Monthly Open") 
+spmcColorIn     = input(color.new(color.navy, 50), title = "Prev Monthly Open Color",   type = input.color)
+
+spmh            = input(true,  title = "Prev Monthly High") 
+spmhColorIn     = input(color.new(color.green,50), title = "Prev Monthly High Color",   type = input.color)
+
+spml            = input(true,  title = "Prev Monthly Low") 
+spmlColorIn     = input(color.new(color.red,  50), title = "Prev Monthly Low Color",    type = input.color)
+
+
+swo             = input(true,  title = "Weekly Open") 
+swoColorIn      = input(color.new(color.blue, 50), title = "Color - Weekly Open",       type = input.color)
+
+spwc            = input(true,  title = "Prev Weekly Open") 
+spwcColorIn     = input(color.new(color.navy, 50), title = "Color - Prev Weekly Open",  type = input.color)
+
+spwh            = input(true,  title = "Prev Weekly High") 
+spwhColorIn     = input(color.new(color.green,50), title = "Color - Prev Weekly High",  type = input.color)
+
+spwl            = input(true,  title = "Prev Weekly Low") 
+spwlColorIn     = input(color.new(color.red,  50), title = "Color - Prev Weekly Low",   type = input.color)
+ 
+ 
+sdo             = input(true,  title = "Daily Open") 
+sdoColorIn      = input(color.new(color.blue, 50), title = "Color - Daily Open",        type = input.color)
+
+spdc            = input(true, title = "Prev Daily Open") 
+spdcColorIn     = input(color.new(color.navy,50),  title = "Color - Prev Daily Open",   type = input.color)
+
+spdh            = input(true,  title = "Prev Daily High") 
+spdhColorIn     = input(color.new(color.green,50), title = "Color - Prev Daily High",   type = input.color)
+
+spdl            = input(true,  title = "Prev Daily Low") 
+spdlColorIn     = input(color.new(color.red,  50), title = "Color - Prev Daily Low",    type = input.color) 
+
+ 
+ 
+smpp            = input(true,   title = "Monthly 50%") 
+smppColorIn     = input(color.new(color.orange,  70), title = "Color - Monthly 50%",    type = input.color) 
+
+swpp            = input(true,   title = "Weekly 50%") 
+swppColorIn     = input(color.new(color.blue,  70),   title = "Color - Weekly 50%",     type = input.color) 
+
+sdpp            = input(true,  title = "Daily 50%") 
+sdppColorIn     = input(color.new(color.red,  70),    title = "Color - Daily 50%",      type = input.color) 
+
+ 
+// offs = input(3,      title = "Labels Offset") 
+ 
+// Tickers 
+mo  = security(syminfo.tickerid, 'M', open, 
+      lookahead=barmerge.lookahead_on) 
+pmo = security(syminfo.tickerid, 'M', open, 
+      lookahead=barmerge.lookahead_off)[1] 
+pmh = security(syminfo.tickerid, 'M', high, 
+      lookahead=barmerge.lookahead_off)[1] 
+pml = security(syminfo.tickerid, 'M', low, 
+      lookahead=barmerge.lookahead_off)[1] 
+ 
+wo  = security(syminfo.tickerid, 'W', open, 
+      lookahead=barmerge.lookahead_on) 
+pwo = security(syminfo.tickerid, 'W', open, 
+      lookahead=barmerge.lookahead_off)[1] 
+pwh = security(syminfo.tickerid, 'W', high, 
+      lookahead=barmerge.lookahead_off)[1] 
+pwl = security(syminfo.tickerid, 'W', low, 
+      lookahead=barmerge.lookahead_off)[1] 
+ 
+do  = security(syminfo.tickerid, 'D', open, 
+      lookahead=barmerge.lookahead_on) 
+pdo = security(syminfo.tickerid, 'D', open, 
+      lookahead=barmerge.lookahead_off)[1] 
+pdh = security(syminfo.tickerid, 'D', high, 
+      lookahead=barmerge.lookahead_off)[1] 
+pdl = security(syminfo.tickerid, 'D', low, 
+      lookahead=barmerge.lookahead_off)[1] 
+ 
+ 
+// Calculations 
+dpp = (pdh+pdl) / 2 
+wpp = (pwh+pwl) / 2 
+mpp = (pmh+pml) / 2 
+
+
+// Color 
+moc  = mo  != mo[1]  ? na : smoColorIn
+pmoc = pmo != pmo[1] ? na : spmcColorIn
+pmhc = pmh != pmh[1] ? na : spmhColorIn
+pmlc = pml != pml[1] ? na : spmlColorIn
+ 
+woc  = wo  != wo[1]  ? na : swoColorIn 
+pwoc = pwo != pwo[1] ? na : spwcColorIn  
+pwhc = pwh != pwh[1] ? na : spwhColorIn 
+pwlc = pwl != pwl[1] ? na : spwlColorIn 
+ 
+doc  = do  != do[1]  ? na : sdoColorIn 
+pdoc = pdo != pdo[1] ? na : spdcColorIn
+pdhc = pdh != pdh[1] ? na : spdhColorIn
+pdlc = pdl != pdl[1] ? na : spdlColorIn  
+
+
+
+Daily50PercentColor   = dpp != dpp[1] ? na : sdppColorIn
+Weekly50PercentColor  = wpp != wpp[1] ? na : swppColorIn
+Monthly50PercentColor = mpp != mpp[1] ? na : smppColorIn  
+
+ 
+plot(smo  and mo  ? mo  : na, title = "Monthly Open", 
+      style = plot.style_line,    linewidth = 3, color = moc) 
+plot(spmc and pmo ? pmo : na, title = "Prev Monthly Open", 
+      style = plot.style_line,   linewidth = 3, color = pmoc) 
+plot(spmh and pmh ? pmh : na, title = "Prev Monthly High", 
+      style = plot.style_line,   linewidth = 3, color = pmhc) 
+plot(spml and pml ? pml : na, title = "Prev Monthly Low", 
+      style = plot.style_line, linewidth = 3, color = pmlc) 
+ 
+plot(swo  and wo  ? wo  : na, title = "Weekly Open", 
+      style = plot.style_line,    linewidth = 2, color = woc) 
+plot(spwc and pwo ? pwo : na, title = "Prev Weekly Open", 
+      style = plot.style_line,   linewidth = 2, color = pwoc) 
+plot(spwh and pwh ? pwh : na, title = "Prev Weekly High", 
+      style = plot.style_line,   linewidth = 2, color = pwhc) 
+plot(spwl and pwl ? pwl : na, title = "Prev Weekly Low", 
+      style = plot.style_line, linewidth = 2, color = pwlc) 
+ 
+plot(sdo  and do  ? do  : na, title = "Daily Open", 
+      style = plot.style_line,    linewidth = 1, color = doc) 
+plot(spdc and pdo ? pdo : na, title = "Prev Daily Open", 
+      style = plot.style_line,   linewidth = 1, color = pdoc) 
+plot(spdh and pdh ? pdh : na, title = "Prev Daily High", 
+      style = plot.style_line,   linewidth = 1, color = pdhc) 
+plot(spdl and pdl ? pdl : na, title = "Prev Daily Low", 
+      style = plot.style_line, linewidth = 1, color = pdlc) 
+ 
+plot(sdpp and dpp ? dpp : na, title = "Daily 50%", 
+      style = plot.style_circles, linewidth = 1, color = Daily50PercentColor) 
+plot(swpp and wpp ? wpp : na, title = "Weekly 50%", 
+      style = plot.style_circles, linewidth = 2, color = Weekly50PercentColor) 
+plot(smpp and mpp ? mpp : na, title = "Monthly 50%", 
+      style = plot.style_circles, linewidth = 2, color = Monthly50PercentColor)
+      
+
+
+///////////////
+// FUNCTIONS //
+///////////////
+
+// Function outputs 1 when it's the first bar of the D/W/M/Y
+is_newbar(res) =>
+    ch = 0
+    if(res == '12M')
+        t  = year(time('D'))
+        ch := change(t) != 0 ? 1 : 0
+    else
+        t = time(res)
+        ch := change(t) != 0 ? 1 : 0
+    ch
+
+// Rounding levels to min tick
+nround(x) => 
+    n = round(x / syminfo.mintick) * syminfo.mintick
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+MajLabels = MajLabelsIn=='OFF' ? 0 : 1
+
+// LabelOffsetIn = input(8, title="Label Offset adjustment")
+LabelOffset   = timenow + round(change(time) * LabelOffsetIn)
+
+
+// LabelOffset
+Majlabel_1  = smo  and MajLabels and mo  > 0 ? label.new(x=LabelOffset, y=mo,  xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Monthly Open"      + " " + tostring(nround(mo)))  : "Monthly Open",      textcolor=moc,  style= label.style_none) : na
+Majlabel_2  = spmc and MajLabels and pmo > 0 ? label.new(x=LabelOffset, y=pmo, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Monthly Open" + " " + tostring(nround(pmo))) : "Prev Monthly Open", textcolor=pmoc, style= label.style_none) : na
+Majlabel_3  = spmh and MajLabels and pmh > 0 ? label.new(x=LabelOffset, y=pmh, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Monthly High" + " " + tostring(nround(pmh))) : "Prev Monthly High", textcolor=pmhc, style= label.style_none) : na
+Majlabel_4  = spml and MajLabels and pml > 0 ? label.new(x=LabelOffset, y=pml, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Monthly Low"  + " " + tostring(nround(pml))) : "Prev Monthly Low",  textcolor=pmlc, style= label.style_none) : na
+
+Majlabel_5  = swo  and MajLabels and wo  > 0 ? label.new(x=LabelOffset, y=wo,  xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Weekly Open"       + " " + tostring(nround(wo)))  : "Weekly Open",       textcolor=woc,  style= label.style_none) : na
+Majlabel_6  = spwc and MajLabels and pwo > 0 ? label.new(x=LabelOffset, y=pwo, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Weekly Open"  + " " + tostring(nround(pwo))) : "Prev Weekly Open",  textcolor=pwoc, style= label.style_none) : na
+Majlabel_7  = spwh and MajLabels and pwh > 0 ? label.new(x=LabelOffset, y=pwh, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Weekly High"  + " " + tostring(nround(pwh))) : "Prev Weekly High",  textcolor=pwhc, style= label.style_none) : na
+Majlabel_8  = spwl and MajLabels and pwl > 0 ? label.new(x=LabelOffset, y=pwl, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Weekly Low"   + " " + tostring(nround(pwl))) : "Prev Weekly Low",   textcolor=pwlc, style= label.style_none) :  na
+
+Majlabel_9  = sdo  and MajLabels and do  > 0 ? label.new(x=LabelOffset, y=do,  xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Daily Open"        + " " + tostring(nround(do)))  : "Daily Open",        textcolor=doc,  style= label.style_none) : na
+Majlabel_10 = spdc and MajLabels and pdo > 0 ? label.new(x=LabelOffset, y=pdo, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Day Open"     + " " + tostring(nround(pdo))) : "Prev Day Open",     textcolor=pdoc, style= label.style_none) : na
+Majlabel_11 = spdh and MajLabels and pdh > 0 ? label.new(x=LabelOffset, y=pdh, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Day High"     + " " + tostring(nround(pdh))) : "Prev Day High",     textcolor=pdhc, style= label.style_none) : na
+Majlabel_12 = spdl and MajLabels and pdl > 0 ? label.new(x=LabelOffset, y=pdl, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Prev Day Low"      + " " + tostring(nround(pdl))) : "Prev Day Low",      textcolor=pdlc, style= label.style_none) : na
+
+Majlabel_13 = sdpp and MajLabels and dpp > 0 ? label.new(x=LabelOffset, y=dpp, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Daily 50%"         + " " + tostring(nround(dpp))) : "Daily 50%",         textcolor=Daily50PercentColor,   style= label.style_none) : na
+Majlabel_14 = swpp and MajLabels and wpp > 0 ? label.new(x=LabelOffset, y=wpp, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Weekly 50%"        + " " + tostring(nround(wpp))) : "Weekly 50%",        textcolor=Weekly50PercentColor,  style= label.style_none) : na
+Majlabel_15 = smpp and MajLabels and mpp > 0 ? label.new(x=LabelOffset, y=mpp, xloc=xloc.bar_time, yloc=yloc.price, text=MajLabelsIn=='Labels+$$'? ("           Monthly 50%"       + " " + tostring(nround(mpp))) : "Monthly 50%",       textcolor=Monthly50PercentColor, style= label.style_none) : na
+
+// vv 62 or 63
+
+label.delete(Majlabel_1[1])
+label.delete(Majlabel_2[1])
+label.delete(Majlabel_3[1])
+label.delete(Majlabel_4[1])
+label.delete(Majlabel_5[1])    
+label.delete(Majlabel_6[1])
+label.delete(Majlabel_7[1])
+label.delete(Majlabel_8[1])
+label.delete(Majlabel_9[1])
+label.delete(Majlabel_10[1])
+label.delete(Majlabel_11[1])
+label.delete(Majlabel_12[1])
+label.delete(Majlabel_13[1])
+label.delete(Majlabel_14[1])
+label.delete(Majlabel_15[1])
+
+
+/////////
+
+TF1_Menu        = "S/R Zones"
+TF1_VolMA1Input = 6
+
+
+// S/R - Timeframe 1 = TF1
+
+TF1_Vol   = security(syminfo.tickerid, TF1, volume)
+TF1_VolMA = sma(TF1_Vol, TF1_VolMA1Input)
+TF1_High  = security(syminfo.tickerid, TF1, high)
+TF1_Low   = security(syminfo.tickerid, TF1, low)
+TF1_Open  = security(syminfo.tickerid, TF1, open)
+TF1_Close = security(syminfo.tickerid, TF1, close)
+
+TF1_Up = TF1_High[3] > TF1_High[4] and TF1_High[4] > TF1_High[5] and 
+   TF1_High[2] < TF1_High[3] and TF1_High[1] < TF1_High[2] and 
+   TF1_Vol[3] > TF1_VolMA[3]  // or volume[3] > VolMA2Current[3])
+TF1_Down = TF1_Low[3] < TF1_Low[4] and TF1_Low[4] < TF1_Low[5] and TF1_Low[2] > TF1_Low[3] and 
+   TF1_Low[1] > TF1_Low[2] and TF1_Vol[3] > TF1_VolMA[3]  // or volume[3] > VolMA2Current[3])
+
+
+TF1_CalcFractalUp() =>
+    TF1_FractalUp = 0.0
+    TF1_FractalUp := TF1_Up ? TF1_High[3]    : TF1_FractalUp[1]
+    TF1_FractalUp
+
+TF1_CalcFractalDown() =>
+    TF1_FractalDown = 0.0
+    TF1_FractalDown := TF1_Down ? TF1_Low[3] : TF1_FractalDown[1]
+    TF1_FractalDown
+
+
+TF1_FractalUp   = security(syminfo.tickerid, TF1, TF1_CalcFractalUp())
+TF1_FractalDown = security(syminfo.tickerid, TF1, TF1_CalcFractalDown())
+
+
+// Zones - Timeframe 1 = TF1
+
+// Fractal Up Zones
+
+TF1_CalcFractalUpLowerZone() =>
+    TF1_FractalUpLowerZone = 0.0
+    TF1_FractalUpLowerZone := TF1_Up and TF1_Close[3] > TF1_Open[3] ? TF1_Close[3] : 
+       TF1_Up and TF1_Close[3] < TF1_Open[3] ? TF1_Open[3] : TF1_FractalUpLowerZone[1]
+    TF1_FractalUpLowerZone
+
+TF1_CalcFractalUpUpperZone() =>
+    TF1_FractalUpUpperZone = 0.0
+    TF1_FractalUpUpperZone := TF1_Up and TF1_Close[3] > TF1_Open[3] ? TF1_High[3] - TF1_Close[3] + TF1_High[3] : 
+       TF1_Up and TF1_Close[3] < TF1_Open[3] ? TF1_High[3] - TF1_Open[3] + TF1_High[3] : 
+       TF1_FractalUpUpperZone[1]
+    TF1_FractalUpUpperZone
+
+
+TF1_FractalUpLowerZone = security(syminfo.tickerid, TF1, TF1_CalcFractalUpLowerZone())
+TF1_FractalUpUpperZone = security(syminfo.tickerid, TF1, TF1_CalcFractalUpUpperZone())
+
+TF1_ResistanceUpperZone = TF1_Menu == 'Expanded S/R Zones' ? TF1_FractalUpUpperZone : TF1_FractalUp
+TF1_ResistanceLowerZone = TF1_FractalUpLowerZone
+
+
+// Fractal Down Zones
+
+
+TF1_CalcFractalDownUpperZone() =>
+    TF1_FractalDownUpperZone = 0.0
+    TF1_FractalDownUpperZone := TF1_Down and TF1_Close[3] > TF1_Open[3] ? TF1_Open[3] : 
+       TF1_Down and TF1_Close[3] < TF1_Open[3] ? TF1_Close[3] : 
+       TF1_FractalDownUpperZone[1]
+    TF1_FractalDownUpperZone
+
+
+TF1_CalcFractalDownLowerZone() =>
+    TF1_FractalDownLowerZone = 0.0
+    TF1_FractalDownLowerZone := TF1_Down and TF1_Close[3] > TF1_Open[3] ? TF1_Low[3] + TF1_Low[3] - TF1_Open[3] : 
+       TF1_Down and TF1_Close[3] < TF1_Open[3] ? TF1_Low[3] + TF1_Low[3] - TF1_Close[3] : 
+       TF1_FractalDownLowerZone[1]
+    TF1_FractalDownLowerZone
+
+
+TF1_FractalDownLowerZone = security(syminfo.tickerid, TF1, TF1_CalcFractalDownLowerZone())
+TF1_FractalDownUpperZone = security(syminfo.tickerid, TF1, TF1_CalcFractalDownUpperZone())
+
+
+TF1_SupportUpperZone = TF1_FractalDownUpperZone
+TF1_SupportLowerZone = TF1_Menu == 'Expanded S/R Zones' ? TF1_FractalDownLowerZone : TF1_FractalDown
+
+// Colors - Timeframe 1 = TF1
+
+
+TF1_ResistanceColor      = not InvertColors ?                   #FF00008C : #00FF00E6  // red  : lime
+TF1_SupportColor         = not InvertColors ?                   #00FF00E6 : #FF00008C  // lime : red
+
+
+TF1_ResZoneColor         = TF1_FractalUp != TF1_FractalUp[1] ?          na : color.red
+TF1_ResZoneColorInverted = TF1_FractalUp != TF1_FractalUp[1] ?          na : color.lime
+
+
+TF1_SupZoneColor         = TF1_FractalDown != TF1_FractalDown[1] ?      na : color.lime
+TF1_SupZoneColorInverted = TF1_FractalDown != TF1_FractalDown[1] ?      na : color.red
+
+
+TF1_ResistanceZonesColor = not InvertColors and 
+   (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_ResZoneColor : 
+   InvertColors and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? 
+   TF1_ResZoneColorInverted : na  // red  : lime
+TF1_SupportZonesColor = not InvertColors and 
+   (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_SupZoneColor : 
+   InvertColors and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? 
+   TF1_SupZoneColorInverted : na  // lime : red
+
+
+// S/R & S/R Zone Plots - Current Time Frame = Time Frame 1 = TF1
+
+
+TF1_ResistanceUpZone   = plot(ShowTF1SR and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_ResistanceUpperZone : na, "Resistance - Upper Zone", color=TF1_ResistanceZonesColor, linewidth=1, style=plot.style_line, transp=45, offset=-3, join=false)  // offset=-2
+TF1_ResistanceDownZone = plot(ShowTF1SR and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_ResistanceLowerZone : na, "Resistance - Lower Zone", color=TF1_ResistanceZonesColor, linewidth=1, style=plot.style_line, transp=45, offset=-3, join=false)  // offset=-2
+fill(TF1_ResistanceUpZone, TF1_ResistanceDownZone, color=TF1_ResistanceZonesColor, transp=93, title="Resistance Zone Shading")
+
+
+// plot(ShowTF1SR and (TF1_Menu == 'S/R' or TF1_Menu == 'Expanded S/R Zones') ? TF1_FractalUp   : na, "Timeframe 1 - Resistance", color=TF1_ResistanceColor, linewidth=1, style=plot.style_circles, transp=5, offset=-3, join=false)
+// plot(ShowTF1SR and (TF1_Menu == 'S/R' or TF1_Menu == 'Expanded S/R Zones') ? TF1_FractalDown : na, "Timeframe 1 - Support",    color=TF1_SupportColor,    linewidth=1, style=plot.style_circles, transp=5, offset=-3, join=false)
+
+
+TF1_SupportUpZone      = plot(ShowTF1SR and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_SupportUpperZone : na, "Support - Upper Zone", color=TF1_SupportZonesColor, linewidth=1, style=plot.style_line, transp=45, offset=-3, join=false)
+TF1_SupportDownZone    = plot(ShowTF1SR and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'Expanded S/R Zones') ? TF1_SupportLowerZone : na, "Support - Lower Zone", color=TF1_SupportZonesColor, linewidth=1, style=plot.style_line, transp=45, offset=-3, join=false)
+fill(TF1_SupportUpZone, TF1_SupportDownZone, color=TF1_SupportZonesColor, transp=93, title="Support Zone Shading")
+
+
+
+// // Alerts for Support / Resistance 
+
+TF1SellAtResistance = (low  < TF1_FractalUp)   and (open < TF1_FractalUp)   and (high >= TF1_FractalUp)   and (close < TF1_FractalUp)   ? 1 : 0
+TF1BuyAtSupport     = (high > TF1_FractalDown) and (open > TF1_FractalDown) and (low  <= TF1_FractalDown) and (close > TF1_FractalDown) ? 1 : 0
+
+alertcondition(TF1SellAtResistance, title = "Alert - Sell at Resistance", message = "Alert - Sell at Resistance")
+alertcondition(TF1BuyAtSupport,     title = "Alert - Buy at Support",     message = "Alert - Buy at Support")
+
+// Создаем массив для уровней и их имен
+levels = array.new_float(0)
+level_names = array.new_string(0)
+
+// Функция для добавления значений без NaN
+add_level(name, val) =>
+    if not na(val)
+        array.push(levels, val)
+        array.push(level_names, name)
+
+// Добавляем только существующие уровни
+add_level("Monthly Open", mo)
+add_level("Prev Monthly Open", pmo)
+add_level("Prev Monthly High", pmh)
+add_level("Prev Monthly Low", pml)
+add_level("Weekly Open", wo)
+add_level("Prev Weekly Open", pwo)
+add_level("Prev Weekly High", pwh)
+add_level("Prev Weekly Low", pwl)
+add_level("Daily Open", do)
+add_level("Prev Daily Open", pdo)
+add_level("Prev Daily High", pdh)
+add_level("Prev Daily Low", pdl)
+add_level("Daily 50%", dpp)
+add_level("Weekly 50%", wpp)
+add_level("Monthly 50%", mpp)
+
+// Проверяем, есть ли уровни
+if array.size(levels) > 0
+    // Сортируем массив уровней по возрастанию, сохраняя соответствие с именами
+    for i = 0 to array.size(levels) - 2
+        for j = 0 to array.size(levels) - i - 2
+            if array.get(levels, j) > array.get(levels, j + 1)
+                // Меняем местами значения
+                temp_val = array.get(levels, j)
+                temp_name = array.get(level_names, j)
+                array.set(levels, j, array.get(levels, j + 1))
+                array.set(level_names, j, array.get(level_names, j + 1))
+                array.set(levels, j + 1, temp_val)
+                array.set(level_names, j + 1, temp_name)
+
+    // Формируем JSON-строку
+    levels_json = '{"symbol":"' + syminfo.ticker + '","levels":['
+
+    // Добавляем уровни в JSON
+    for i = 0 to array.size(levels) - 1
+        levels_json := levels_json + '{"name":"' + array.get(level_names, i) + '","value":' + tostring(array.get(levels, i)) + '}'
+        if i < array.size(levels) - 1
+            levels_json := levels_json + ","
+
+    // Закрываем JSON-строку
+    levels_json := levels_json + "]}"
+
+    /// Отображение JSON в виде скрытого лейбла (убираем белую полосу)
+    label.delete(label.new(x=bar_index, y=low - 1000, text="", color=color.white, textcolor=color.white, size=size.tiny)[1])
+
+
+    // Отправка JSON через alert
+    alert(levels_json, alert.freq_once_per_bar)
