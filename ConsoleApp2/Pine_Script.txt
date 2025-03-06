@@ -414,16 +414,18 @@ if array.size(levels) > 0
                 array.set(level_names, j + 1, temp_name)
 
     // Формируем JSON-строку
+    // Формируем JSON-строку
     levels_json = '{"symbol":"' + syminfo.ticker + '","levels":['
 
     // Добавляем уровни в JSON
     for i = 0 to array.size(levels) - 1
-        levels_json := levels_json + '{"name":"' + array.get(level_names, i) + '","value":' + tostring(array.get(levels, i)) + '}'
+        levels_json := levels_json + tostring(array.get(levels, i))
         if i < array.size(levels) - 1
             levels_json := levels_json + ","
 
     // Закрываем JSON-строку
     levels_json := levels_json + "]}"
+
 
     /// Отображение JSON в виде скрытого лейбла (убираем белую полосу)
     label.delete(label.new(x=bar_index, y=low - 1000, text="", color=color.white, textcolor=color.white, size=size.tiny)[1])
