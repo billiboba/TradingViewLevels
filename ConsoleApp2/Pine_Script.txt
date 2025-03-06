@@ -1,119 +1,101 @@
-﻿//@version=5
-indicator("Automatic Support & Resistance with Webhook", shorttitle="Auto S/R", overlay=true)
+﻿//@version=4
+study(title = "Levels with Webhook Alerts", overlay = true) 
 
-// Параметры уровней
-left = input(50, title="Left Bars")
-right = input(25, title="Right Bars")
-quick_right = input(5, title="Quick Right")
-src = input.string("Close", options=["Close", "High/Low"], title="Source")
+// Inputs
+ShowTF1SR = input(false, "Support / Resistance Zones")
+TF1 = input(title="----- Support / Resistance Zones", type=input.resolution, defval="")
+InvertColors = input(true, title = "Support / Resistance Zones - Invert Colors")
 
-// Определение уровней
-pivot_high = src == "Close" ? ta.pivothigh(close, left, right) : ta.pivothigh(high, left, right)
-pivot_lows = src == "Close" ? ta.pivotlow(close, left, right) : ta.pivotlow(low, left, right)
+smo = input(true, title = "Monthly Open") 
+spmc = input(true, title = "Prev Monthly Open") 
+spmh = input(true, title = "Prev Monthly High") 
+spml = input(true, title = "Prev Monthly Low") 
+swo = input(true, title = "Weekly Open") 
+spwc = input(true, title = "Prev Weekly Open") 
+spwh = input(true, title = "Prev Weekly High") 
+spwl = input(true, title = "Prev Weekly Low") 
+sdo = input(true, title = "Daily Open") 
+spdc = input(true, title = "Prev Daily Open") 
+spdh = input(true, title = "Prev Daily High") 
+spdl = input(true, title = "Prev Daily Low") 
+smpp = input(true, title = "Monthly 50%") 
+swpp = input(true, title = "Weekly 50%") 
+sdpp = input(true, title = "Daily 50%") 
 
-quick_pivot_high = src == "Close" ? ta.pivothigh(close, left, quick_right) : ta.pivothigh(high, left, quick_right)
-quick_pivot_lows = src == "Close" ? ta.pivotlow(close, left, quick_right) : ta.pivotlow(low, left, quick_right)
+// Получаем уровни
+mo = security(syminfo.tickerid, 'M', open, lookahead=barmerge.lookahead_on) 
+pmo = security(syminfo.tickerid, 'M', open, lookahead=barmerge.lookahead_off)[1] 
+pmh = security(syminfo.tickerid, 'M', high, lookahead=barmerge.lookahead_off)[1] 
+pml = security(syminfo.tickerid, 'M', low, lookahead=barmerge.lookahead_off)[1] 
+wo = security(syminfo.tickerid, 'W', open, lookahead=barmerge.lookahead_on) 
+pwo = security(syminfo.tickerid, 'W', open, lookahead=barmerge.lookahead_off)[1] 
+pwh = security(syminfo.tickerid, 'W', high, lookahead=barmerge.lookahead_off)[1] 
+pwl = security(syminfo.tickerid, 'W', low, lookahead=barmerge.lookahead_off)[1] 
+do = security(syminfo.tickerid, 'D', open, lookahead=barmerge.lookahead_on) 
+pdo = security(syminfo.tickerid, 'D', open, lookahead=barmerge.lookahead_off)[1] 
+pdh = security(syminfo.tickerid, 'D', high, lookahead=barmerge.lookahead_off)[1] 
+pdl = security(syminfo.tickerid, 'D', low, lookahead=barmerge.lookahead_off)[1] 
 
-// Определение уровней
-level1 = nz(ta.valuewhen(quick_pivot_high, high[quick_right], 0))
-level2 = nz(ta.valuewhen(quick_pivot_lows, low[quick_right], 0))
-level3 = nz(ta.valuewhen(pivot_high, high[right], 0))
-level4 = nz(ta.valuewhen(pivot_lows, low[right], 0))
-level5 = nz(ta.valuewhen(pivot_high, high[right], 1))
-level6 = nz(ta.valuewhen(pivot_lows, low[right], 1))
-level7 = nz(ta.valuewhen(pivot_high, high[right], 2))
-level8 = nz(ta.valuewhen(pivot_lows, low[right], 2))
+// Вычисляем уровни 50%
+dpp = (pdh + pdl) / 2 
+wpp = (pwh + pwl) / 2 
+mpp = (pmh + pml) / 2 
 
-// Формируем JSON-сообщение
-jsonMessage = '{"symbol": "' + syminfo.ticker + '", "resistance": [' + 
-              str.tostring(level1) + ', ' + str.tostring(level3) + ', ' + str.tostring(level5) + ', ' + str.tostring(level7) + 
-              '], "support": [' + 
-              str.tostring(level2) + ', ' + str.tostring(level4) + ', ' + str.tostring(level6) + ', ' + str.tostring(level8) + ']}'
+// Собираем все уровни в массив
+levels = array.new_float()
+addLevel(lv) =>
+    if not na(lv) and not array.includes(levels, lv)  // Убираем дубликаты
+        array.push(levels, lv)
 
-// ✅ Отправка алерта раз в 30 секунд
+addLevel(mo)
+addLevel(pmo)
+addLevel(pmh)
+addLevel(pml)
+addLevel(wo)
+addLevel(pwo)
+addLevel(pwh)
+addLevel(pwl)
+addLevel(do)
+addLevel(pdo)
+addLevel(pdh)
+addLevel(pdl)
+addLevel(dpp)
+addLevel(wpp)
+addLevel(mpp)
+
+// Формируем JSON с уровнями
+jsonMessage = '{"symbol": "' + syminfo.ticker + '", "levels": ['
+
+for i = 0 to array.size(levels) - 1
+    jsonMessage := jsonMessage + tostring(array.get(levels, i)) // Используем tostring() вместо str.tostring()
+    if i < array.size(levels) - 1
+        jsonMessage := jsonMessage + ", "
+
+jsonMessage := jsonMessage + "]}"
+
+
+// ✅ Отправка алерта раз в 30 секунд или при закрытии свечи
 var float lastAlertTime = na
-currentTime = timenow  // Текущее время в миллисекундах
-timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  // Разница в секундах
+currentTime = timenow  
+timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  
 
-// Если прошло 30 секунд или новая свеча закрылась – отправляем алерт
-if timeDiff >= 30 or bar_index % 2 == 0  // `bar_index % 2 == 0` для вызова каждые 2 свечи на 15s таймфрейме
+if timeDiff >= 30 or bar_index % 2 == 0  
     alert(jsonMessage, alert.freq_once_per_bar_close)
-    lastAlertTime := currentTime  // Обновляем время последнего алерта
+    lastAlertTime := currentTime  
 
-// 🔹 Рисуем уровни
-plot(level1, color=color.blue, linewidth=1)
-plot(level2, color=color.red, linewidth=1)
-plot(level3, color=color.green, linewidth=1)
-plot(level4, color=color.orange, linewidth=1)
-plot(level5, color=color.blue, linewidth=1)
-plot(level6, color=color.red, linewidth=1)
-plot(level7, color=color.green, linewidth=1)
-plot(level8, color=color.orange, linewidth=1)
-
-Уведомления приходят при закрытии Бара.
-
-
-
-////////////////////////////////////
-
-
-
-
-
-
-//@version=5
-indicator("Automatic Support & Resistance with Webhook", shorttitle="Auto S/R", overlay=true)
-
-// Параметры уровней
-left = input(50, title="Left Bars")
-right = input(25, title="Right Bars")
-quick_right = input(5, title="Quick Right")
-src = input.string("Close", options=["Close", "High/Low"], title="Source")
-
-// Определение уровней
-pivot_high = src == "Close" ? ta.pivothigh(close, left, right) : ta.pivothigh(high, left, right)
-pivot_lows = src == "Close" ? ta.pivotlow(close, left, right) : ta.pivotlow(low, left, right)
-
-quick_pivot_high = src == "Close" ? ta.pivothigh(close, left, quick_right) : ta.pivothigh(high, left, quick_right)
-quick_pivot_lows = src == "Close" ? ta.pivotlow(close, left, quick_right) : ta.pivotlow(low, left, quick_right)
-
-// Определение уровней
-level1 = nz(ta.valuewhen(quick_pivot_high, high[quick_right], 0))
-level2 = nz(ta.valuewhen(quick_pivot_lows, low[quick_right], 0))
-level3 = nz(ta.valuewhen(pivot_high, high[right], 0))
-level4 = nz(ta.valuewhen(pivot_lows, low[right], 0))
-level5 = nz(ta.valuewhen(pivot_high, high[right], 1))
-level6 = nz(ta.valuewhen(pivot_lows, low[right], 1))
-level7 = nz(ta.valuewhen(pivot_high, high[right], 2))
-level8 = nz(ta.valuewhen(pivot_lows, low[right], 2))
-
-// Формируем JSON-сообщение
-timestamp = str.tostring(timenow)
-
-jsonMessage = '{"symbol": "' + syminfo.ticker + '", "timestamp": "' + timestamp + '", "resistance": [' + 
-              str.tostring(level1) + ', ' + str.tostring(level3) + ', ' + str.tostring(level5) + ', ' + str.tostring(level7) + 
-              '], "support": [' + 
-              str.tostring(level2) + ', ' + str.tostring(level4) + ', ' + str.tostring(level6) + ', ' + str.tostring(level8) + ']}'
-
-// ✅ Глобальная переменная для хранения времени последнего алерта
-var float lastAlertTime = na
-currentTime = timenow  // Текущее время в миллисекундах
-timeDiff = na(lastAlertTime) ? 99999999 : (currentTime - lastAlertTime) / 1000  // Разница в секундах
-
-// ✅ Принудительная отправка алертов каждые 30 секунд
-if timeDiff >= 30  // Если прошло 30 секунд с последнего алерта
-    alert(jsonMessage, alert.freq_all)  // alert.freq_all позволяет отправлять алерты на каждом тике
-    lastAlertTime := currentTime  // Обновляем время последнего алерта
-
-// 🔹 Рисуем уровни
-plot(level1, color=color.blue, linewidth=1)
-plot(level2, color=color.red, linewidth=1)
-plot(level3, color=color.green, linewidth=1)
-plot(level4, color=color.orange, linewidth=1)
-plot(level5, color=color.blue, linewidth=1)
-plot(level6, color=color.red, linewidth=1)
-plot(level7, color=color.green, linewidth=1)
-plot(level8, color=color.orange, linewidth=1)
-
-
-Уведомления начинают приходить каждую секунду.
+// 🔹 Графическое отображение уровней
+plot(mo, color=color.blue, linewidth=2, title="Monthly Open")
+plot(pmo, color=color.blue, linewidth=2, title="Prev Monthly Open")
+plot(pmh, color=color.green, linewidth=2, title="Prev Monthly High")
+plot(pml, color=color.red, linewidth=2, title="Prev Monthly Low")
+plot(wo, color=color.orange, linewidth=2, title="Weekly Open")
+plot(pwo, color=color.orange, linewidth=2, title="Prev Weekly Open")
+plot(pwh, color=color.green, linewidth=2, title="Prev Weekly High")
+plot(pwl, color=color.red, linewidth=2, title="Prev Weekly Low")
+plot(do, color=color.purple, linewidth=2, title="Daily Open")
+plot(pdo, color=color.purple, linewidth=2, title="Prev Daily Open")
+plot(pdh, color=color.green, linewidth=2, title="Prev Daily High")
+plot(pdl, color=color.red, linewidth=2, title="Prev Daily Low")
+plot(dpp, color=color.gray, linewidth=2, title="Daily 50%")
+plot(wpp, color=color.gray, linewidth=2, title="Weekly 50%")
+plot(mpp, color=color.gray, linewidth=2, title="Monthly 50%")
